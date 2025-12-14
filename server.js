@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import http from 'node:http'
+
 import express from 'express'
 import chokidar from 'chokidar'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -22,13 +23,18 @@ const watcher = chokidar.watch('src', {
   ignoreInitial: true,
 })
 
+/**
+ * Lidar com mudanças de arquivos na pasta src
+ * Enviar arquivo modificado para o cliente via WebSocket
+ * Servidor -> Cliente
+**/
 watcher.on('change', (file) => {
   const normalized = '/' + file.replace(/\\/g, '/')
   const payload = JSON.stringify({
     type: 'file:changed',
     file: normalized,
   })
-  
+
   socket.send(payload)
 })
 
@@ -40,9 +46,17 @@ const hmrMiddleware = async (req, res, next) => {
     return next()
   }
 
+  /* Ler o arquivo client.js */
   let client = await fs.readFile(path.join(process.cwd(), 'client.js'), 'utf8')
+
+  /* Lidar com o conteúdo dos arquivos JS servidos */
   let content = await fs.readFile(path.join(process.cwd(), req.url), 'utf8')
 
+  /**
+   * Injetar o código do cliente HMR no conteúdo do arquivo JS
+   * Chamar função hmrClient(import.meta) para inicializar o HMR no módulo atual
+   * Import.meta é um objeto especial que contém metadados sobre o módulo atual
+  **/
   content = `
   ${client}
 
@@ -51,11 +65,12 @@ const hmrMiddleware = async (req, res, next) => {
   ${content}
   `
 
+  /* Retornar o conteúdo JS modificado */
   res.type('.js')
   res.send(content)
 }
 
 app.use(hmrMiddleware)
-app.use(express.static(process.cwd()))
+app.use(express.static(process.cwd())) // Serve os arquivos estáticos do diretório atual
 
 server.listen(8080, () => console.log('Listening on port 8080'))
